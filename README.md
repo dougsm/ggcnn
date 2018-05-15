@@ -2,7 +2,7 @@
 
 The GG-CNN is a lightweight, fully-convolutional network which predicts the quality and pose of antipodal grasps at every pixel in an input depth image.  The lightweight and single-pass generative nature of GG-CNN allows for fast execution and closed-loop control, enabling accurate grasping in dynamic environments where objects are moved during the grasp attempt.
 
-This repository contains the implementation of the Generative Grasping Convolutional Neural Network (GG-CNN)from the paper:
+This repository contains the implementation of the Generative Grasping Convolutional Neural Network (GG-CNN) from the paper:
 
 **Closing the Loop for Robotic Grasping: A Real-time, Generative Grasp Synthesis Approach**
 
