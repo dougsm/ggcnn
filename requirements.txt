@@ -1,0 +1,9 @@
+numpy
+scipy
+Pillow
+scikit-image
+tensorflow-gpu
+keras
+matplotlib
+opencv-python
+h5py
