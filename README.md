@@ -25,7 +25,7 @@ If you use this work, please cite:
 
 **Contact**
 
-Any questions or comments contact [Doug Morrison](mailto:douglas.morrison@hdr.qut.edu.au).
+Any questions or comments contact [Doug Morrison](mailto:doug.morrison@roboticvision.org).
 
 ## Installation
 
