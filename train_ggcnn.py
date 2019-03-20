@@ -131,7 +131,7 @@ for filter_sizes in FILTER_SIZES:
 
         ae.fit(x_train, y_train,
                batch_size=4,
-               epochs=100,
+               epochs=50,
                shuffle=True,
                callbacks=my_callbacks,
                validation_data=(x_test, y_test)
