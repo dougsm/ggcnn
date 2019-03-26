@@ -36,7 +36,15 @@ def write_log(s):
 
 def plot_output(rgb_img, depth_img, grasp_position_img, grasp_angle_img, ground_truth_bbs, no_grasps=1, grasp_width_img=None):
         """
-        Visualise the outputs.
+        Visualise the outputs of the network.
+        rgb_img, depth_img, grasp_position_img, grasp_angle_img should all be the same size.
+        :param rgb_img: Original RGB image
+        :param depth_img: Corresponding Depth Image (what was passed to the network)
+        :param grasp_position_img: The grasp quality output of the GG-CNN
+        :param grasp_angle_img: The grasp angle output of the GG-CNN
+        :param ground_truth_bbs: np.array, e.g. loaded by dataset_processing.grasp.BoundingBoxes.load_from_file. Empty array is ok.
+        :param no_grasps: Number of local-maxima of grasp_position_img to generate grasps for
+        :param grasp_width_img: The grasp width output of the GG-CNN.
         """
         grasp_position_img = gaussian(grasp_position_img, 5.0, preserve_range=True)
 
