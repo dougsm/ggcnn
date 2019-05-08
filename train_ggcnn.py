@@ -1,138 +1,267 @@
+import datetime
 import os
-from datetime import datetime
+import sys
+import argparse
+import logging
 
-import h5py
-import numpy as np
+import cv2
 
-from keras.callbacks import ModelCheckpoint, TensorBoard
-from keras.layers import Conv2D, Conv2DTranspose
-from keras.layers import Input
-from keras.models import Model
+import torch
+import torch.utils.data
+import torch.optim as optim
+
+from torchsummary import summary
+
+import tensorboardX
+
+from utils.visualisation.gridshow import gridshow
+
+from utils.dataset_processing import evaluation
+from utils.data import get_dataset
+from models import get_network
+from models.common import post_process_output
+
+logging.basicConfig(level=logging.INFO)
 
 
-FILTER_SIZES = [
-    [(9, 9), (5, 5), (3, 3)]
-]
+def parse_args():
+    parser = argparse.ArgumentParser(description='Train GG-CNN')
 
-NO_FILTERS = [
-    [32, 16, 8],
-]
+    # Network
+    parser.add_argument('--network', type=str, default='ggcnn', help='Network Name in .models')
 
-INPUT_DATASET = 'data/datasets/dataset_180514_1305.hdf5'
+    # Dataset & Data & Training
+    parser.add_argument('--dataset', type=str, help='Dataset Name ("cornell" or "jaquard")')
+    parser.add_argument('--dataset-path', type=str, help='Path to dataset')
+    parser.add_argument('--use-depth', type=int, default=1, help='Use Depth image for training (1/0)')
+    parser.add_argument('--use-rgb', type=int, default=0, help='Use RGB image for training (0/1)')
+    parser.add_argument('--split', type=float, default=0.9, help='Fraction of data for training (remainder is validation)')
+    parser.add_argument('--ds-rotate', type=float, default=0.0,
+                        help='Shift the start point of the dataset to use a different test/train split for cross validation.')
+    parser.add_argument('--num-workers', type=int, default=8, help='Dataset workers')
 
-# =====================================================================================================
-# Load the data.
-f = h5py.File(INPUT_DATASET, 'r')
+    parser.add_argument('--batch-size', type=int, default=8, help='Batch size')
+    parser.add_argument('--epochs', type=int, default=30, help='Training epochs')
+    parser.add_argument('--batches-per-epoch', type=int, default=1000, help='Batches per Epoch')
+    parser.add_argument('--val-batches', type=int, default=250, help='Validation Batches')
 
-depth_train = np.expand_dims(np.array(f['train/depth_inpainted']), -1)
-point_train = np.expand_dims(np.array(f['train/grasp_points_img']), -1)
-angle_train = np.array(f['train/angle_img'])
-cos_train = np.expand_dims(np.cos(2*angle_train), -1)
-sin_train = np.expand_dims(np.sin(2*angle_train), -1)
-grasp_width_train = np.expand_dims(np.array(f['train/grasp_width']), -1)
+    # Logging etc.
+    parser.add_argument('--description', type=str, default='', help='Training description')
+    parser.add_argument('--outdir', type=str, default='output/models/', help='Training Output Directory')
+    parser.add_argument('--logdir', type=str, default='tensorboard/', help='Log directory')
+    parser.add_argument('--vis', action='store_true', help='Visualise the training process')
 
-depth_test = np.expand_dims(np.array(f['test/depth_inpainted']), -1)
-point_test = np.expand_dims(np.array(f['test/grasp_points_img']), -1)
-angle_test = np.array(f['test/angle_img'])
-cos_test = np.expand_dims(np.cos(2*angle_test), -1)
-sin_test = np.expand_dims(np.sin(2*angle_test), -1)
-grasp_width_test = np.expand_dims(np.array(f['test/grasp_width']), -1)
+    args = parser.parse_args()
+    return args
 
-# Ground truth bounding boxes.
-gt_bbs = np.array(f['test/bounding_boxes'])
 
-f.close()
+def validate(net, device, val_data, batches_per_epoch):
+    """
+    Run validation.
+    :param net: Network
+    :param device: Torch device
+    :param val_data: Validation Dataset
+    :param batches_per_epoch: Number of batches to run
+    :return: Successes, Failures and Losses
+    """
+    net.eval()
 
-# ====================================================================================================
-# Set up the train and test data.
+    results = {
+        'correct': 0,
+        'failed': 0,
+        'loss': 0,
+        'losses': {
 
-x_train = depth_train
+        }
+    }
 
-grasp_width_train = np.clip(grasp_width_train, 0, 150)/150.0
-y_train = [point_train, cos_train, sin_train, grasp_width_train]
+    ld = len(val_data)
 
-x_test = depth_test
+    with torch.no_grad():
+        batch_idx = 0
+        while batch_idx < batches_per_epoch:
+            for x, y, didx, rot, zoom_factor in val_data:
+                batch_idx += 1
+                if batches_per_epoch is not None and batch_idx >= batches_per_epoch:
+                    break
 
-grasp_width_test = np.clip(grasp_width_test, 0, 150)/150.0
-y_test = [point_test, cos_test, sin_test, grasp_width_test]
+                xc = x.to(device)
+                yc = [yy.to(device) for yy in y]
+                lossd = net.compute_loss(xc, yc)
 
-# ======================================================================================================================
+                loss = lossd['loss']
 
-for filter_sizes in FILTER_SIZES:
-    for no_filters in NO_FILTERS:
-        dt = datetime.now().strftime('%y%m%d_%H%M')
+                results['loss'] += loss.item()/ld
+                for ln, l in lossd['losses'].items():
+                    if ln not in results['losses']:
+                        results['losses'][ln] = 0
+                    results['losses'][ln] += l.item()/ld
 
-        NETWORK_NAME = "ggcnn_%s_%s_%s__%s_%s_%s" % (filter_sizes[0][0], filter_sizes[1][0], filter_sizes[2][0],
-                                                     no_filters[0], no_filters[1], no_filters[2])
-        NETWORK_NOTES = """
-            Input: Inpainted depth, subtracted mean, in meters, with random rotations and zoom. 
-            Output: q, cos(2theta), sin(2theta), grasp_width in pixels/150.
-            Dataset: %s
-            Filter Sizes: %s
-            No Filters: %s
-        """ % (
-            INPUT_DATASET,
-            repr(filter_sizes),
-            repr(no_filters)
-        )
-        OUTPUT_FOLDER = 'data/networks/%s__%s/' % (dt, NETWORK_NAME)
+                q_out, ang_out, w_out = post_process_output(lossd['pred']['pos'], lossd['pred']['cos'],
+                                                            lossd['pred']['sin'], lossd['pred']['width'])
 
-        if not os.path.exists(OUTPUT_FOLDER):
-            os.makedirs(OUTPUT_FOLDER)
+                s = evaluation.calculate_iou_match(q_out, ang_out,
+                                                   val_data.dataset.get_gtbb(didx, rot, zoom_factor),
+                                                   no_grasps=1,
+                                                   grasp_width=w_out,
+                                                   )
 
-        # Save the validation data so that it matches this network.
-        np.save(os.path.join(OUTPUT_FOLDER, '_val_input'), x_test)
+                if s:
+                    results['correct'] += 1
+                else:
+                    results['failed'] += 1
 
-        # ====================================================================================================
-        # Network
+    return results
 
-        input_layer = Input(shape=x_train.shape[1:])
 
-        x = Conv2D(no_filters[0], kernel_size=filter_sizes[0], strides=(3, 3), padding='same', activation='relu')(input_layer)
-        x = Conv2D(no_filters[1], kernel_size=filter_sizes[1], strides=(2, 2), padding='same', activation='relu')(x)
-        encoded = Conv2D(no_filters[2], kernel_size=filter_sizes[2], strides=(2, 2), padding='same', activation='relu')(x)
+def train(epoch, net, device, train_data, optimizer, batches_per_epoch, vis=False):
+    """
+    Run one training epoch
+    :param epoch: Current epoch
+    :param net: Network
+    :param device: Torch device
+    :param train_data: Training Dataset
+    :param optimizer: Optimizer
+    :param batches_per_epoch:  Data batches to train on
+    :param vis:  Visualise training progress
+    :return:  Average Losses for Epoch
+    """
+    results = {
+        'loss': 0,
+        'losses': {
+        }
+    }
 
-        x = Conv2DTranspose(no_filters[2], kernel_size=filter_sizes[2], strides=(2, 2), padding='same', activation='relu')(encoded)
-        x = Conv2DTranspose(no_filters[1], kernel_size=filter_sizes[1], strides=(2, 2), padding='same', activation='relu')(x)
-        x = Conv2DTranspose(no_filters[0], kernel_size=filter_sizes[0], strides=(3, 3), padding='same', activation='relu')(x)
+    net.train()
 
-        # ===================================================================================================
-        # Output layers
+    batch_idx = 0
+    # Use batches per epoch to make training on different sized datasets (cornell/jacquard) more equivalent.
+    while batch_idx < batches_per_epoch:
+        for x, y, _, _, _ in train_data:
+            batch_idx += 1
+            if batch_idx >= batches_per_epoch:
+                break
 
-        pos_output = Conv2D(1, kernel_size=2, padding='same', activation='linear', name='pos_out')(x)
-        cos_output = Conv2D(1, kernel_size=2, padding='same', activation='linear', name='cos_out')(x)
-        sin_output = Conv2D(1, kernel_size=2, padding='same', activation='linear', name='sin_out')(x)
-        width_output = Conv2D(1, kernel_size=2, padding='same', activation='linear', name='width_out')(x)
+            xc = x.to(device)
+            yc = [yy.to(device) for yy in y]
+            lossd = net.compute_loss(xc, yc)
 
-        # ===================================================================================================
-        # And go!
+            loss = lossd['loss']
 
-        ae = Model(input_layer, [pos_output, cos_output, sin_output, width_output])
-        ae.compile(optimizer='rmsprop', loss='mean_squared_error')
+            if batch_idx % 100 == 0:
+                logging.info('Epoch: {}, Batch: {}, Loss: {:0.4f}'.format(epoch, batch_idx, loss.item()))
 
-        ae.summary()
+            results['loss'] += loss.item()
+            for ln, l in lossd['losses'].items():
+                if ln not in results['losses']:
+                    results['losses'][ln] = 0
+                results['losses'][ln] += l.item()
 
-        with open(os.path.join(OUTPUT_FOLDER, '_description.txt'), 'w') as f:
-            # Write description to file.
-            f.write(NETWORK_NOTES)
-            f.write('\n\n')
-            ae.summary(print_fn=lambda q: f.write(q + '\n'))
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
 
-        with open(os.path.join(OUTPUT_FOLDER, '_dataset.txt'), 'w') as f:
-            # Write dataset name to file for future reference.
-            f.write(INPUT_DATASET)
+            # Display the images
+            if vis:
+                imgs = []
+                for idx in range(4):
+                    imgs.extend([x[idx,].numpy().squeeze()] + [yi[idx,].numpy().squeeze() for yi in y] + [
+                        x[idx,].numpy().squeeze()] + [pc[idx,].detach().cpu().numpy().squeeze() for pc in lossd['pred'].values()])
+                gridshow('Display', imgs,
+                         [(xc.min().item(), xc.max().item()), (0.0, 1.0), (0.0, 1.0), (-1.0, 1.0), (0.0, 1.0)] * 2 * 4,
+                         [cv2.COLORMAP_BONE] * 10 * 4, 10)
+                cv2.waitKey(2)
 
-        tb_logdir = './data/tensorboard/%s_%s' % (dt, NETWORK_NAME)
+    results['loss'] /= batch_idx
+    for l in results['losses']:
+        results['losses'][l] /= batch_idx
 
-        my_callbacks = [
-            TensorBoard(log_dir=tb_logdir),
-            ModelCheckpoint(os.path.join(OUTPUT_FOLDER, 'epoch_{epoch:02d}_model.hdf5'), period=1),
-        ]
+    return results
 
-        ae.fit(x_train, y_train,
-               batch_size=4,
-               epochs=50,
-               shuffle=True,
-               callbacks=my_callbacks,
-               validation_data=(x_test, y_test)
-               )
+
+def run():
+    args = parse_args()
+
+    # Set-up output directories
+    dt = datetime.datetime.now().strftime('%y%m%d_%H%M')
+    net_desc = '{}_{}'.format(dt, '_'.join(args.description.split()))
+
+    save_folder = os.path.join(args.outdir, net_desc)
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
+    tb = tensorboardX.SummaryWriter(os.path.join(args.logdir, net_desc))
+
+    # Load Dataset
+    logging.info('Loading {} Dataset...'.format(args.dataset.title()))
+    Dataset = get_dataset(args.dataset)
+
+    train_dataset = Dataset(args.dataset_path, start=0.0, end=args.split, ds_rotate=args.ds_rotate,
+                            random_rotate=True, random_zoom=True,
+                            include_depth=args.use_depth, include_rgb=args.use_rgb)
+    train_data = torch.utils.data.DataLoader(
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers
+    )
+    val_dataset = Dataset(args.dataset_path, start=args.split, end=1.0, ds_rotate=args.ds_rotate,
+                          random_rotate=True, random_zoom=True,
+                          include_depth=args.use_depth, include_rgb=args.use_rgb)
+    val_data = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=1,
+        shuffle=False,
+        num_workers=args.num_workers
+    )
+    logging.info('Done')
+
+    # Load the network
+    logging.info('Loading Network...')
+    input_channels = 1*args.use_depth + 3*args.use_rgb
+    ggcnn = get_network(args.network)
+
+    net = ggcnn(input_channels=input_channels)
+    device = torch.device("cuda:0")
+    net = net.to(device)
+    optimizer = optim.Adam(net.parameters())
+    logging.info('Done')
+
+    # Print model architecture.
+    summary(net, (input_channels, 300, 300))
+    f = open(os.path.join(save_folder, 'arch.txt'), 'w')
+    sys.stdout = f
+    summary(net, (input_channels, 300, 300))
+    sys.stdout = sys.__stdout__
+    f.close()
+
+    best_iou = 0.0
+    for epoch in range(args.epochs):
+        logging.info('Beginning Epoch {:02d}'.format(epoch))
+        train_results = train(epoch, net, device, train_data, optimizer, args.batches_per_epoch, vis=args.vis)
+
+        # Log training losses to tensorboard
+        tb.add_scalar('loss/train_loss', train_results['loss'], epoch)
+        for n, l in train_results['losses'].items():
+            tb.add_scalar('train_loss/' + n, l, epoch)
+
+        # Run Validation
+        logging.info('Validating...')
+        test_results = validate(net, device, val_data, args.val_batches)
+        logging.info('%d/%d = %f' % (test_results['correct'], test_results['correct'] + test_results['failed'],
+                                     test_results['correct']/(test_results['correct']+test_results['failed'])))
+
+        # Log validation results to tensorbaord
+        tb.add_scalar('loss/IOU', test_results['correct'] / (test_results['correct'] + test_results['failed']), epoch)
+        tb.add_scalar('loss/val_loss', test_results['loss'], epoch)
+        for n, l in test_results['losses'].items():
+            tb.add_scalar('val_loss/' + n, l, epoch)
+
+        # Save best performing network
+        iou = test_results['correct'] / (test_results['correct'] + test_results['failed'])
+        if iou > best_iou or epoch == 0 or (epoch % 10) == 0:
+            torch.save(net, os.path.join(save_folder, 'epoch_%02d_iou_%0.2f' % (epoch, iou)))
+            best_iou = iou
+
+
+if __name__ == '__main__':
+    run()

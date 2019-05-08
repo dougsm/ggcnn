@@ -1,4 +1,8 @@
-__pychache__
 .idea
-.python-version
+__pycache__
+tensorboard
+models
+
 *.pyc
+
+/.python-version
