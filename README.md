@@ -1,3 +1,5 @@
+**NOTE:** This is the original code used for the RSS 2018 paper below.  It is in a pretty bad state and unlikely to be maintained, so I recommend that you use the updated, PyTorch in the `master` branch which is much more user friendly.
+
 # Generative Grasping CNN (GG-CNN)
 
 The GG-CNN is a lightweight, fully-convolutional network which predicts the quality and pose of antipodal grasps at every pixel in an input depth image.  The lightweight and single-pass generative nature of GG-CNN allows for fast execution and closed-loop control, enabling accurate grasping in dynamic environments where objects are moved during the grasp attempt.
