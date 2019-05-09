@@ -1,7 +1,7 @@
 .idea
 __pycache__
 tensorboard
-models
+output
 
 *.pyc
 
