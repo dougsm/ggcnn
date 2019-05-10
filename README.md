@@ -19,11 +19,11 @@ Robotics: Science and Systems (RSS) 2018
 If you use this work, please cite:
 
 ```text
-@article{morrison2018closing, 
-	title={Closing the Loop for Robotic Grasping: A Real-time, Generative Grasp Synthesis Approach}, 
-	author={Morrison, Douglas and Corke, Peter and Leitner, Jürgen}, 
-	booktitle={Robotics: Science and Systems (RSS)}, 
-	year={2018} 
+@inproceedings{morrison2018closing,
+	title={{Closing the Loop for Robotic Grasping: A Real-time, Generative Grasp Synthesis Approach}},
+	author={Morrison, Douglas and Corke, Peter and Leitner, J\"urgen},
+	booktitle={Proc.\ of Robotics: Science and Systems (RSS)},
+	year={2018}
 }
 ```
 
@@ -41,7 +41,7 @@ pip install -r requirements.txt
 
 ## Datasets
 
-Currently, both the [Cornell Grasping Dataset](http://pr.cs.cornell.edu/grasping/rect_data/data.php) and 
+Currently, both the [Cornell Grasping Dataset](http://pr.cs.cornell.edu/grasping/rect_data/data.php) and
 [Jacquard Dataset](https://jacquard.liris.cnrs.fr/) are supported.
 
 ### Cornell Grasping Dataset
@@ -80,7 +80,7 @@ Evaluation or visualisation of the trained networks are done using the `eval_ggc
 Important flags are:
 * `--iou-eval` to evaluate using the IoU between grasping rectangles metric.
 * `--jacquard-output` to generate output files in the format required for simulated testing against the Jacquard dataset.
-* `--vis` to plot the network output and predicted grasping rectangles. 
+* `--vis` to plot the network output and predicted grasping rectangles.
 
 For example:
 
