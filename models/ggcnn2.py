@@ -56,7 +56,7 @@ class GGCNN2(nn.Module):
     def forward(self, x):
         x = self.features(x)
 
-        pos_output = torch.sigmoid(self.pos_output(x))
+        pos_output = self.pos_output(x)
         cos_output = self.cos_output(x)
         sin_output = self.sin_output(x)
         width_output = self.width_output(x)
@@ -67,7 +67,7 @@ class GGCNN2(nn.Module):
         y_pos, y_cos, y_sin, y_width = yc
         pos_pred, cos_pred, sin_pred, width_pred = self(xc)
 
-        p_loss = F.binary_cross_entropy(pos_pred, y_pos)
+        p_loss = F.mse_loss(pos_pred, y_pos)
         cos_loss = F.mse_loss(cos_pred, y_cos)
         sin_loss = F.mse_loss(sin_pred, y_sin)
         width_loss = F.mse_loss(width_pred, y_width)
