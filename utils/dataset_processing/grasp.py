@@ -266,7 +266,7 @@ class GraspRectangle:
         :param angle_threshold: Maximum angle difference between GraspRectangles
         :return: IoU between Grasp Rectangles
         """
-        if abs(self.angle - gr.angle) % np.pi > angle_threshold:
+        if abs((self.angle - gr.angle + np.pi/2) % np.pi - np.pi/2) > angle_threshold:
             return 0
 
         rr1, cc1 = self.polygon_coords()
