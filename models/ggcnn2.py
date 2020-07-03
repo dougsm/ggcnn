@@ -37,11 +37,12 @@ class GGCNN2(nn.Module):
             nn.ReLU(inplace=True),
 
             # Output layers
-            nn.ConvTranspose2d(filter_sizes[2], filter_sizes[3], 3, stride=2, padding=1, output_padding=1),
+            nn.UpsamplingBilinear2d(scale_factor=2),
+            nn.Conv2d(filter_sizes[2], filter_sizes[3], 3, padding=1),
             nn.ReLU(inplace=True),
-            nn.ConvTranspose2d(filter_sizes[3], filter_sizes[3], 3, stride=2, padding=1, output_padding=1),
+            nn.UpsamplingBilinear2d(scale_factor=2),
+            nn.Conv2d(filter_sizes[3], filter_sizes[3], 3, padding=1),
             nn.ReLU(inplace=True),
-
         )
 
         self.pos_output = nn.Conv2d(filter_sizes[3], 1, kernel_size=1)
