@@ -42,7 +42,7 @@ def parse_args():
     parser.add_argument('--num-workers', type=int, default=8, help='Dataset workers')
 
     parser.add_argument('--batch-size', type=int, default=8, help='Batch size')
-    parser.add_argument('--epochs', type=int, default=30, help='Training epochs')
+    parser.add_argument('--epochs', type=int, default=50, help='Training epochs')
     parser.add_argument('--batches-per-epoch', type=int, default=1000, help='Batches per Epoch')
     parser.add_argument('--val-batches', type=int, default=250, help='Validation Batches')
 
@@ -262,6 +262,7 @@ def run():
         iou = test_results['correct'] / (test_results['correct'] + test_results['failed'])
         if iou > best_iou or epoch == 0 or (epoch % 10) == 0:
             torch.save(net, os.path.join(save_folder, 'epoch_%02d_iou_%0.2f' % (epoch, iou)))
+            torch.save(net.state_dict(), os.path.join(save_folder, 'epoch_%02d_iou_%0.2f_SD' % (epoch, iou)))
             best_iou = iou
 
 
