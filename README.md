@@ -55,7 +55,52 @@ Currently, both the [Cornell Grasping Dataset](http://pr.cs.cornell.edu/grasping
 
 ## Pre-trained Models
 
-**Coming Soon**
+Some example pre-trained models for GG-CNN and GG-CNN2 can be downloaded from [here](https://github.com/dougsm/ggcnn/releases/tag/v0.1).  The models are trained on the Cornell grasping
+dataset using the depth images.  Each zip file contains 1) the full saved model from `torch.save(model)` and 2) the weights state dict from `torch.save(model.state_dict())`. 
+
+For example loading GG-CNN (replace ggcnn with ggcnn2 as required):
+
+```bash
+# Enter the directory where you cloned this repo
+cd /path/to/ggcnn
+
+# Download the weights
+wget https://github.com/dougsm/ggcnn/releases/download/v0.1/ggcnn_weights_cornell.zip
+
+# Unzip the weights.
+unzip ggcnn_weights_cornell.zip
+
+# Load the weights in python, e.g.
+python
+>>> import torch
+
+# Option 1) Load the model directly.
+# (this may print warning based on the installed version of python)
+>>> model = torch.load('ggcnn_weights_cornell/ggcnn_epoch_23_cornell')
+>>> model
+
+GGCNN(
+  (conv1): Conv2d(1, 32, kernel_size=(9, 9), stride=(3, 3), padding=(3, 3))
+  (conv2): Conv2d(32, 16, kernel_size=(5, 5), stride=(2, 2), padding=(2, 2))
+  (conv3): Conv2d(16, 8, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+  (convt1): ConvTranspose2d(8, 8, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), output_padding=(1, 1))
+  (convt2): ConvTranspose2d(8, 16, kernel_size=(5, 5), stride=(2, 2), padding=(2, 2), output_padding=(1, 1))
+  (convt3): ConvTranspose2d(16, 32, kernel_size=(9, 9), stride=(3, 3), padding=(3, 3), output_padding=(1, 1))
+  (pos_output): Conv2d(32, 1, kernel_size=(2, 2), stride=(1, 1))
+  (cos_output): Conv2d(32, 1, kernel_size=(2, 2), stride=(1, 1))
+  (sin_output): Conv2d(32, 1, kernel_size=(2, 2), stride=(1, 1))
+  (width_output): Conv2d(32, 1, kernel_size=(2, 2), stride=(1, 1))
+)
+
+
+# Option 2) Instantiate a model and load the weights.
+>>> from models.ggcnn import GGCNN
+>>> model = GGCNN()
+>>> model.load_state_dict(torch.load('ggcnn_weights_cornell/ggcnn_epoch_23_cornell_statedict.pt'))
+
+<All keys matched successfully>
+
+```
 
 ## Training
 
