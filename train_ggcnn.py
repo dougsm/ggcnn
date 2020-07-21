@@ -23,8 +23,6 @@ from models.common import post_process_output
 
 logging.basicConfig(level=logging.INFO)
 
-cv2.namedWindow('Display', cv2.WINDOW_NORMAL)
-
 def parse_args():
     parser = argparse.ArgumentParser(description='Train GG-CNN')
 
@@ -183,6 +181,10 @@ def train(epoch, net, device, train_data, optimizer, batches_per_epoch, vis=Fals
 
 def run():
     args = parse_args()
+
+    # Vis window
+    if args.vis:
+        cv2.namedWindow('Display', cv2.WINDOW_NORMAL)
 
     # Set-up output directories
     dt = datetime.datetime.now().strftime('%y%m%d_%H%M')
